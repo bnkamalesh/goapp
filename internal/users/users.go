@@ -3,145 +3,103 @@ package users
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/bnkamalesh/errors"
-
-	"github.com/bnkamalesh/goapp/internal/pkg/cachestore"
 	"github.com/bnkamalesh/goapp/internal/pkg/logger"
 )
 
-// User holds all data required to represent a user
+var (
+	ErrUserEmailNotFound      = errors.New("user with the email not found")
+	ErrUserEmailAlreadyExists = errors.New("user with the email already exists")
+)
+
 type User struct {
-	FirstName string     `json:"firstName,omitempty"`
-	LastName  string     `json:"lastName,omitempty"`
-	Mobile    string     `json:"mobile,omitempty"`
-	Email     string     `json:"email,omitempty"`
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	ID             string
+	FullName       string
+	Email          string
+	Phone          string
+	ContactAddress string
 }
 
-func (u *User) setDefaults() {
-	now := time.Now()
-	if u.CreatedAt == nil {
-		u.CreatedAt = &now
+// ValidateForCreate runs the validation required for when a user is being created. i.e. ID is not available
+func (us *User) ValidateForCreate() error {
+	if us.FullName == "" {
+		return errors.Validation("full name cannot be empty")
 	}
 
-	if u.UpdatedAt == nil {
-		u.UpdatedAt = &now
-	}
-}
-
-// Sanitize is used to sanitize/cleanup the fields of User
-func (u *User) Sanitize() {
-	u.FirstName = strings.TrimSpace(u.FirstName)
-	u.LastName = strings.TrimSpace(u.LastName)
-	u.Email = strings.TrimSpace(u.Email)
-	u.Mobile = strings.TrimSpace(u.Mobile)
-}
-
-// Validate is used to validate the fields of User
-func (u *User) Validate() error {
-	if u.Email == "" {
-		return nil
-	}
-
-	err := validateEmail(u.Email)
-	if err != nil {
-		return err
+	if us.Email == "" {
+		return errors.Validation("email cannot be empty")
 	}
 
 	return nil
 }
 
-func validateEmail(email string) error {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return errors.Validation("invalid email address provided")
-	}
-
-	return nil
+func (us *User) Sanitize() {
+	us.ID = strings.TrimSpace(us.ID)
+	us.FullName = strings.TrimSpace(us.FullName)
+	us.ContactAddress = strings.TrimSpace(us.ContactAddress)
+	us.Phone = strings.TrimSpace(us.Phone)
 }
 
-type userCachestore interface {
-	SetUser(ctx context.Context, email string, u *User) error
-	ReadUserByEmail(ctx context.Context, email string) (*User, error)
-}
 type store interface {
-	Create(ctx context.Context, u *User) error
-	ReadByEmail(ctx context.Context, email string) (*User, error)
+	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	SaveUser(ctx context.Context, user *User) (string, error)
+	BulkSaveUser(ctx context.Context, users []User) error
 }
-
-// Users struct holds all the dependencies required for the users package. And exposes all services
-// provided by this package as its methods
 type Users struct {
-	logHandler logger.Logger
-	cachestore userCachestore
-	store      store
+	store store
 }
 
-// CreateUser creates a new user
-func (us *Users) CreateUser(ctx context.Context, u *User) (*User, error) {
-	u.setDefaults()
-	u.Sanitize()
-
-	err := u.Validate()
+func (us *Users) CreateUser(ctx context.Context, user *User) (*User, error) {
+	user.Sanitize()
+	err := user.ValidateForCreate()
 	if err != nil {
 		return nil, err
 	}
 
-	err = us.store.Create(ctx, u)
+	newID, err := us.store.SaveUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}
+	user.ID = newID
 
-	return u, nil
+	return user, nil
 }
 
-// ReadByEmail returns a user which matches the given email
 func (us *Users) ReadByEmail(ctx context.Context, email string) (*User, error) {
-	email = strings.TrimSpace(email)
-	err := validateEmail(email)
-	if err != nil {
-		return nil, err
+	if email == "" {
+		return nil, errors.Validation("no email provided")
 	}
 
-	u, err := us.cachestore.ReadUserByEmail(ctx, email)
-	if err != nil &&
-		!errors.Is(err, cachestore.ErrCacheMiss) &&
-		!errors.Is(err, cachestore.ErrCacheNotInitialized) {
-		// caches are usually read-through, i.e. in case of error, just log and continue to fetch from
-		// primary datastore
-		_ = us.logHandler.Error(err.Error())
-	} else if err == nil {
-		return u, nil
-	}
-
-	u, err = us.store.ReadByEmail(ctx, email)
-	if err != nil {
-		return nil, err
-	}
-
-	err = us.cachestore.SetUser(ctx, u.Email, u)
-	if err != nil {
-		// in case of error while storing in cache, it is only logged
-		// This behaviour as well as read-through cache behaviour depends on your business logic.
-		_ = us.logHandler.Error(err.Error())
-	}
-
-	return u, nil
+	return us.store.GetUserByEmail(ctx, email)
 }
 
-// NewService initializes the Users struct with all its dependencies and returns a new instance
-// all dependencies of Users should be sent as arguments of NewService
-func NewService(
-	l logger.Logger,
-	persistenceStore store,
-	cacheStore userCachestore,
-) (*Users, error) {
+func (us *Users) AsyncCreateUsers(ctx context.Context, users []User) error {
+	errList := make([]error, 0, len(users))
+	for i := range users {
+		err := users[i].ValidateForCreate()
+		if err != nil {
+			errList = append(errList, err)
+		}
+	}
+
+	if len(errList) != 0 {
+		return errors.Join(errList...)
+	}
+
+	go func() {
+		ctx := context.TODO()
+		err := us.store.BulkSaveUser(context.TODO(), users)
+		if err != nil {
+			logger.Error(ctx, err, users)
+		}
+	}()
+
+	return nil
+}
+
+func NewService(store store) *Users {
 	return &Users{
-		logHandler: l,
-		cachestore: cacheStore,
-		store:      persistenceStore,
-	}, nil
+		store: store,
+	}
 }

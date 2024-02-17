@@ -1,4 +1,4 @@
-FROM golang:1.20 AS builder
+FROM golang:1.21 AS builder
 
 COPY ../ /app
 WORKDIR /app
@@ -13,10 +13,10 @@ LABEL MAINTAINER Author <author@example.com>
 
 # Following commands are for installing CA certs (for proper functioning of HTTPS and other TLS)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-		ca-certificates  \
-        netbase \
-        && rm -rf /var/lib/apt/lists/ \
-        && apt-get autoremove -y && apt-get autoclean -y
+    ca-certificates  \
+    netbase \
+    && rm -rf /var/lib/apt/lists/ \
+    && apt-get autoremove -y && apt-get autoclean -y
 
 # Add new user 'appuser'. App should be run without root privileges as a security measure
 RUN adduser --home "/appuser" --disabled-password appuser \

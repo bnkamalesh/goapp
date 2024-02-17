@@ -4,6 +4,7 @@
 package logger
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -24,10 +25,10 @@ const (
 
 // Logger interface defines all the logging methods to be implemented
 type Logger interface {
-	Info(payload ...interface{}) error
-	Warn(payload ...interface{}) error
-	Error(payload ...interface{}) error
-	Fatal(payload ...interface{}) error
+	Info(ctx context.Context, payload ...any) error
+	Warn(ctx context.Context, payload ...any) error
+	Error(ctx context.Context, payload ...any) error
+	Fatal(ctx context.Context, payload ...any) error
 }
 
 // LogHandler implements Logger
@@ -35,20 +36,25 @@ type LogHandler struct {
 	Skipstack  int
 	appName    string
 	appVersion string
+	params     map[string]string
 }
 
-func (lh *LogHandler) defaultPayload(severity string) map[string]interface{} {
+func (lh *LogHandler) defaultPayload(severity string) map[string]any {
 	_, file, line, _ := runtime.Caller(lh.Skipstack)
-	return map[string]interface{}{
+	payload := map[string]any{
 		"app":        lh.appName,
 		"appVersion": lh.appVersion,
 		"severity":   severity,
 		"line":       fmt.Sprintf("%s:%d", file, line),
 		"at":         time.Now(),
 	}
+	for key, value := range lh.params {
+		payload[key] = value
+	}
+	return payload
 }
 
-func (lh *LogHandler) serialize(severity string, data ...interface{}) (string, error) {
+func (lh *LogHandler) serialize(severity string, data ...any) (string, error) {
 	payload := lh.defaultPayload(severity)
 	for idx, value := range data {
 		payload[fmt.Sprintf("%d", idx)] = fmt.Sprintf("%+v", value)
@@ -62,7 +68,7 @@ func (lh *LogHandler) serialize(severity string, data ...interface{}) (string, e
 	return string(b), nil
 }
 
-func (lh *LogHandler) log(severity string, payload ...interface{}) error {
+func (lh *LogHandler) log(severity string, payload ...any) error {
 	out, err := lh.serialize(severity, payload...)
 	if err != nil {
 		return err
@@ -81,27 +87,32 @@ func (lh *LogHandler) log(severity string, payload ...interface{}) error {
 }
 
 // Info is for logging items with severity 'info'
-func (lh *LogHandler) Info(payload ...interface{}) error {
+func (lh *LogHandler) Info(payload ...any) error {
 	return lh.log(LogTypeInfo, payload...)
 }
 
 // Warn is for logging items with severity 'Warn'
-func (lh *LogHandler) Warn(payload ...interface{}) error {
+func (lh *LogHandler) Warn(payload ...any) error {
 	return lh.log(LogTypeWarn, payload...)
 }
 
 // Error is for logging items with severity 'Error'
-func (lh *LogHandler) Error(payload ...interface{}) error {
+func (lh *LogHandler) Error(payload ...any) error {
 	return lh.log(LogTypeError, payload...)
 }
 
 // Fatal is for logging items with severity 'Fatal'
-func (lh *LogHandler) Fatal(payload ...interface{}) error {
+func (lh *LogHandler) Fatal(payload ...any) error {
 	return lh.log(LogTypeFatal, payload...)
 }
 
 // New returns a new instance of LogHandler
-func New(appname string, appversion string, skipStack uint) *LogHandler {
+func New(
+	appname string,
+	appversion string,
+	skipStack uint8,
+	params map[string]string,
+) *LogHandler {
 	if skipStack <= 1 {
 		skipStack = 4
 	}
@@ -110,5 +121,6 @@ func New(appname string, appversion string, skipStack uint) *LogHandler {
 		Skipstack:  int(skipStack),
 		appName:    appname,
 		appVersion: appversion,
+		params:     params,
 	}
 }

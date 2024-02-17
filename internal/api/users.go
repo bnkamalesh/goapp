@@ -25,3 +25,7 @@ func (a *API) ReadUserByEmail(ctx context.Context, email string) (*users.User, e
 
 	return u, nil
 }
+
+func (a *API) AsyncCreateUsers(ctx context.Context, users []users.User) error {
+	return a.users.AsyncCreateUsers(ctx, users)
+}

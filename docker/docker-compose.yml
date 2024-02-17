@@ -1,26 +1,35 @@
 version: "3.9"
 services:
   redis:
-    image: "redis:alpine"
+    image: "redis:7"
     networks:
       - goapp_network
 
   postgres:
-    image: "postgres"
+    image: "postgres:16"
     environment:
       POSTGRES_PASSWORD: gauserpassword
       POSTGRES_USER: gauser
       POSTGRES_DB: goapp
+    ports:
+      - "5432:5432"
     networks:
       - goapp_network
 
   goapp:
-    image: golang:1.20
+    image: golang:1.22
     volumes:
       - ${PWD}:/app
     working_dir: /app
-    # command: go run main.go
     tty: true
+    environment:
+      TEMPLATES_BASEPATH: /app/cmd/server/http/web/templates
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_STORENAME: "goapp"
+      POSTGRES_USERNAME: "gauser"
+      POSTGRES_PASSWORD: "gauserpassword"
+    command: go run main.go
     ports:
       - "8080:8080"
     depends_on:

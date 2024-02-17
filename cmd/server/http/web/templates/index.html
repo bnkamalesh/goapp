@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Hello world</title>
+    <style>
+      html,
+      body {
+        font-size: 16px;
+        line-height: 1.5em;
+        min-width: 100vw;
+        min-height: 100vh;
+      }
+      body {
+        font-family: sans-serif;
+        background-color: #efefef;
+        color: #222;
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+      }
+      main {
+        margin: 40vh auto 0;
+        width: 35rem;
+      }
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6 {
+        font-family: "Roboto", sans-serif;
+        font-weight: 400;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h3 id="colorize" style="text-align: center">{{.Message}}</h3>
+    </main>
+  </body>
+</html>

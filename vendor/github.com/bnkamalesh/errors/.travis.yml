@@ -1,9 +1,0 @@
-language: go
-go:
-  - master
-
-script:
-  - go test -mod=vendor -coverprofile=coverage.txt -covermode=atomic $(go list ./... | grep -v /cmd)
-
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
